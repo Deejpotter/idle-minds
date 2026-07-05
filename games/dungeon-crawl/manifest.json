@@ -1,0 +1,9 @@
+{
+  "id": "dungeon-crawl",
+  "name": "Dungeon Crawl",
+  "version": "1.0.0",
+  "description": "Build a guild of heroes and conquer dungeons.",
+  "thumbnail": "/games/dungeon-crawl/thumbnail.svg",
+  "tags": ["idle", "rpg", "dungeon", "retro"],
+  "author": "deejpotter"
+}

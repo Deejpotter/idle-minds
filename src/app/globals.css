@@ -1,0 +1,68 @@
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap');
+
+:root {
+  --bg: #0e0c18;
+  --text: #e8e8f0;
+  --text-dim: #888899;
+  --accent: #ffaa44;
+  --accent-2: #6688cc;
+  --danger: #ff6644;
+  --border: #2a2850;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'VT323', monospace;
+  font-size: 20px;
+  margin: 0;
+}
+
+h1, h2, h3 {
+  font-family: 'Press Start 2P', monospace;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--accent-2);
+}
+
+.game-card {
+  border: 2px solid var(--border);
+  background: #121020;
+  padding: 12px;
+  transition: transform 0.05s;
+  display: block;
+}
+
+.game-card:hover {
+  transform: translate(-4px, -4px);
+  box-shadow: 4px 4px 0 var(--accent);
+}
+
+.game-card img {
+  image-rendering: pixelated;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  display: block;
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 0.02),
+    rgba(255, 255, 255, 0.02) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  pointer-events: none;
+  z-index: 9999;
+}

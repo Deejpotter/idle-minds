@@ -1,0 +1,27 @@
+{
+  "name": "idle-minds",
+  "version": "1.0.0",
+  "description": "Game platform hosting multiple Phaser games",
+  "scripts": {
+    "predev": "node scripts/copy-games.js",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "keywords": [],
+  "author": "deejpotter",
+  "license": "ISC",
+  "dependencies": {
+    "@clerk/nextjs": "^7.5.9",
+    "next": "^15.5.19",
+    "phaser": "^4.2.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.1",
+    "@types/react": "^19.2.17",
+    "typescript": "^6.0.3"
+  }
+}
