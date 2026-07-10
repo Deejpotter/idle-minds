@@ -1,4 +1,3 @@
-import Phaser from 'phaser';
 import { CombatSystem } from '../systems/CombatSystem.js';
 import { DungeonSystem } from '../systems/DungeonSystem.js';
 import { SaveSystem } from '../systems/SaveSystem.js';
