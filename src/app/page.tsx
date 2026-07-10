@@ -7,15 +7,8 @@ export default async function Home() {
   return (
     <main>
       <Header />
-      <h1 style={{ textAlign: 'center', padding: '32px 0', fontSize: '20px' }}>
-        IDLE MINDS
-      </h1>
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-        gap: '16px',
-        padding: '0 32px 32px',
-      }}>
+      <h1 className="home-title">IDLE MINDS</h1>
+      <div className="game-grid">
         {games.map(g => <GameCard key={g.id} game={g} />)}
       </div>
     </main>

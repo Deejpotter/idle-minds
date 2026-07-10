@@ -56,13 +56,7 @@ export default function DungeonCrawlGameClient() {
   }, [userId, isSignedIn]);
 
   return (
-    <div style={{
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'center',
-      minHeight: '100vh',
-      background: '#08060f',
-    }}>
+    <div className="game-shell">
       <div ref={containerRef} id="game-container" />
     </div>
   );

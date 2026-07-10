@@ -9,10 +9,18 @@
       margin: 0;
       padding: 0;
       background: #08060f;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      min-height: 100vh;
+      overflow: hidden;
+    }
+
+    #game-container {
+      width: 100vw;
+      height: 100vh;
+    }
+
+    #game-container canvas {
+      display: block;
+      margin: 0 auto;
+      touch-action: none;
     }
   </style>
 </head>

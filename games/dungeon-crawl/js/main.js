@@ -11,6 +11,12 @@ const config = {
     pixelArt: true,
     backgroundColor: '#08060f',
     parent: 'game-container',
+    scale: {
+        mode: Phaser.Scale.FIT,
+        autoCenter: Phaser.Scale.CENTER_BOTH,
+        width: 800,
+        height: 600
+    },
     scene: [BootScene, TitleScene, GuildScene, DungeonSelectScene, DungeonScene]
 };
 
