@@ -7,5 +7,6 @@ node_modules
 .trae
 .vscode
 .DS_Store
+public/games
 games/dungeon-crawl/node_modules
 games/dungeon-crawl/.next

@@ -37,3 +37,6 @@ next-env.d.ts
 
 # windows
 Thumbs.db
+
+# generated at build time (games/<name> copied into public/games by next.config.mjs)
+/public/games/
