@@ -234,6 +234,7 @@ export class Hero {
     hero.currentMp = data.currentMp;
     return hero;
   }
+}
 
 export function createStarterHero() {
   const hero = new Hero('paladin', 1, 'Auriel');
