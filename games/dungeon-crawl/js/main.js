@@ -1,3 +1,4 @@
+import Phaser from 'phaser';
 import BootScene from './scenes/BootScene.js';
 import TitleScene from './scenes/TitleScene.js';
 import GuildScene from './scenes/GuildScene.js';

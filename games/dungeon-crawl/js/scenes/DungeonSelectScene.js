@@ -1,3 +1,4 @@
+import Phaser from 'phaser';
 import { DUNGEONS, DUNGEON_LIST, isDungeonUnlocked } from '../data/dungeons.js';
 import { DungeonSystem } from '../systems/DungeonSystem.js';
 import { createPanel, createButton, createDivider } from '../ui/Panels.js';

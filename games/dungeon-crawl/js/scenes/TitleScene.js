@@ -1,3 +1,4 @@
+import Phaser from 'phaser';
 import { SaveSystem } from '../systems/SaveSystem.js';
 
 export default class TitleScene extends Phaser.Scene {

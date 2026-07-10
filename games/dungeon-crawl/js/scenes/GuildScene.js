@@ -1,3 +1,4 @@
+import Phaser from 'phaser';
 import { Hero, createStarterHero } from '../systems/HeroSystem.js';
 import { EconomySystem } from '../systems/EconomySystem.js';
 import { SaveSystem } from '../systems/SaveSystem.js';

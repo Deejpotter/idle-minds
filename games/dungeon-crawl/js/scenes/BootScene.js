@@ -1,3 +1,4 @@
+import Phaser from 'phaser';
 import { generateAllSprites } from '../systems/SpriteGenerator.js';
 
 export default class BootScene extends Phaser.Scene {
