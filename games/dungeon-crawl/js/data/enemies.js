@@ -131,5 +131,4 @@ export function createEnemy(typeKey, levelScaling = 1) {
 }
 
 // ─── Expansion Pack (Phase 5B) ────────────────────────────────
-import { EXPANSION_ENEMIES } from './enemiesExpansion.js';
 Object.assign(ENEMIES, EXPANSION_ENEMIES);

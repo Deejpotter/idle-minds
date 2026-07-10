@@ -127,7 +127,6 @@ export function isDungeonUnlocked(dungeonId, dungeonsCompleted) {
 }
 
 // ─── Expansion Pack (Phase 5A) ────────────────────────────────
-import { EXPANSION_DUNGEONS } from './dungeonsExpansion.js';
 Object.assign(DUNGEONS, EXPANSION_DUNGEONS);
 DUNGEON_LIST.length = 0;
 DUNGEON_LIST.push(...Object.values(DUNGEONS));
