@@ -14,12 +14,12 @@ export async function readSave(userId: string, gameId: string, slot: string) {
   try {
     const raw = await fs.readFile(savePath(userId, gameId, slot), 'utf-8');
     return JSON.parse(raw);
-  } catch (e) {
+  } catch {
     return null;
   }
 }
 
-export async function writeSave(userId: string, gameId: string, slot: string, data: any) {
+export async function writeSave(userId: string, gameId: string, slot: string, data: unknown) {
   const target = savePath(userId, gameId, slot);
   await fs.mkdir(path.dirname(target), { recursive: true });
   const tmp = target + '.tmp';
