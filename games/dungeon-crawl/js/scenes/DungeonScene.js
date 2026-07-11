@@ -1158,9 +1158,10 @@ export default class DungeonScene extends Phaser.Scene {
       this.generateRoomLayout(room);
       this.buildCorridor();
       this.spawnHeroes(room);
+      this.dungeonSystem.spawnRoomEnemies(room); // populate roomEnemies BEFORE spawning sprites
       this.spawnEnemies(room);
 
-      this.combatSystem.startCombat(this.party, this.dungeonSystem.spawnRoomEnemies(room));
+      this.combatSystem.startCombat(this.party, this.dungeonSystem.roomEnemies);
 
       this.cameras.main.fadeIn(400, 0, 0, 0);
       flashPunch(this);
