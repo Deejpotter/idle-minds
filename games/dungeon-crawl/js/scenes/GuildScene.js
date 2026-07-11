@@ -8,7 +8,7 @@ import { RARITIES } from '../data/gear.js';
 import { CLASSES, HERO_NAMES } from '../data/classes.js';
 import { PREDEFINED_EXPEDITIONS, EXPEDITION_TYPES, formatDuration } from '../data/expeditions.js';
 import { createPanel, createButton, createStatBar, createDivider, createGoldDisplay } from '../ui/Panels.js';
-import { renderDashboard } from '../ui/Dashboard.js';
+import { openDashboard } from '../ui/Dashboard.js';
 
 const FONT_SERIF = 'Georgia, "Times New Roman", serif';
 const FONT_MONO = '"Courier New", Courier, monospace';
@@ -1321,28 +1321,8 @@ export default class GuildScene extends Phaser.Scene {
   openDashboard() {
     if (this.dashboardOpen) return;
     this.dashboardOpen = true;
-    this.renderDashboardContent();
 
-    // Refresh every 2 seconds while open
-    this.dashboardRefreshTimer = this.time.addEvent({
-      delay: 2000,
-      loop: true,
-      callback: () => {
-        if (this.dashboardOpen) this.renderDashboardContent();
-      }
-    });
-  }
-
-  renderDashboardContent() {
-    // Clear existing — disable input first so the input manager doesn't
-    // hold a stale hitArea reference when we destroy under the pointer.
-    for (const el of this.dashboardElements || []) {
-      if (el && typeof el.disableInteractive === 'function') el.disableInteractive();
-      if (el && typeof el.destroy === 'function') el.destroy();
-    }
-    this.dashboardElements = [];
-
-    const elements = renderDashboard(this, {
+    this.dashboardController = openDashboard(this, {
       economy: this.economy,
       gameState: this.gameState,
       expeditionSystem: this.expeditionSystem
@@ -1353,16 +1333,22 @@ export default class GuildScene extends Phaser.Scene {
       onExpeditions: () => { this.closeDashboard(); this.toggleExpeditions(); }
     });
 
-    this.dashboardElements = elements;
+    // Refresh only the dynamic values every 2s (UI is built once).
+    this.dashboardRefreshTimer = this.time.addEvent({
+      delay: 2000,
+      loop: true,
+      callback: () => {
+        if (this.dashboardOpen && this.dashboardController) this.dashboardController.refresh();
+      }
+    });
   }
 
   closeDashboard() {
     this.dashboardOpen = false;
-    for (const el of this.dashboardElements || []) {
-      if (el && typeof el.disableInteractive === 'function') el.disableInteractive();
-      if (el && typeof el.destroy === 'function') el.destroy();
+    if (this.dashboardController) {
+      this.dashboardController.close();
+      this.dashboardController = null;
     }
-    this.dashboardElements = [];
     if (this.dashboardRefreshTimer) {
       this.dashboardRefreshTimer.remove();
       this.dashboardRefreshTimer = null;

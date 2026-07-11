@@ -71,8 +71,21 @@ export function createPanel(scene, x, y, w, h, title) {
 }
 
 // ─── Button ──────────────────────────────────────────────────────
-export function createButton(scene, x, y, label, callback, width = 120) {
-  const h = 28;
+// Returns a controller: { graphics, text, x, y, width, height, destroy() }.
+// `colors` lets callers theme the button (e.g. dashboard quick-actions).
+// NOTE: the interactive hit area is a Zone, not the Graphics object — Graphics
+// has no default hit area in Phaser, so calling setInteractive() on it directly
+// makes the button unclickable. Do not change this without also adding a hitArea.
+export function createButton(scene, x, y, label, callback, widthOrOpts = 120, height = 28, colors = null) {
+  let width = widthOrOpts;
+  if (typeof widthOrOpts === 'object' && widthOrOpts !== null) {
+    // legacy positional signature: (scene,x,y,label,callback,width,height,colors)
+    width = widthOrOpts.width ?? 120;
+    height = widthOrOpts.height ?? 28;
+    colors = widthOrOpts.colors ?? null;
+  }
+  const h = height;
+  const c = colors || CLR;
   const g = scene.add.graphics();
 
   const draw = (bg, bdr, bdrAlpha) => {
@@ -91,12 +104,12 @@ export function createButton(scene, x, y, label, callback, width = 120) {
     g.fillRoundedRect(x + 2, y + 1, width - 4, Math.floor(h / 2) - 1, { tl: 3, tr: 3, bl: 0, br: 0 });
   };
 
-  draw(CLR.btnBg, CLR.btnBorder, 0.6);
+  draw(c.btnBg, c.btnBorder, 0.6);
 
   const text = scene.add.text(x + width / 2, y + h / 2, label, {
     fontFamily: FONT_MONO,
     fontSize: '14px',
-    color: CLR.btnText,
+    color: c.btnText,
     fontStyle: 'bold'
   }).setOrigin(0.5);
 
@@ -104,20 +117,20 @@ export function createButton(scene, x, y, label, callback, width = 120) {
   const zone = scene.add.zone(x + width / 2, y + h / 2, width, h).setInteractive({ useHandCursor: true });
 
   zone.on('pointerover', () => {
-    draw(CLR.btnHover, CLR.btnHoverBdr, 0.8);
-    text.setColor(CLR.btnTextHover);
+    draw(c.btnHover, c.btnHoverBdr, 0.8);
+    text.setColor(c.btnTextHover);
     scene.tweens.add({ targets: [g, text], scaleX: 1.03, scaleY: 1.03, duration: 120, ease: 'Back.easeOut' });
   });
 
   zone.on('pointerout', () => {
-    draw(CLR.btnBg, CLR.btnBorder, 0.6);
-    text.setColor(CLR.btnText);
+    draw(c.btnBg, c.btnBorder, 0.6);
+    text.setColor(c.btnText);
     scene.tweens.add({ targets: [g, text], scaleX: 1, scaleY: 1, duration: 120, ease: 'Back.easeOut' });
   });
 
   zone.on('pointerdown', () => {
-    draw(CLR.btnDown, CLR.btnBorder, 0.5);
-    text.setColor(CLR.btnTextDown);
+    draw(c.btnDown, c.btnBorder, 0.5);
+    text.setColor(c.btnTextDown);
     scene.tweens.add({ targets: [g, text], scaleX: 0.97, scaleY: 0.97, duration: 60, ease: 'Power2' });
   });
 
@@ -125,7 +138,19 @@ export function createButton(scene, x, y, label, callback, width = 120) {
     callback();
   });
 
-  return { graphics: g, text, x, y, width, height: h };
+  return {
+    graphics: g,
+    text,
+    x,
+    y,
+    width,
+    height: h,
+    destroy() {
+      zone.destroy();
+      g.destroy();
+      text.destroy();
+    }
+  };
 }
 
 // ─── Stat Bar ────────────────────────────────────────────────────
