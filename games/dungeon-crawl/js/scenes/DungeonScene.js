@@ -4,6 +4,7 @@ import { SaveSystem } from '../systems/SaveSystem.js';
 import { EconomySystem } from '../systems/EconomySystem.js';
 import { RARITIES } from '../data/gear.js';
 import { createPanel, createButton } from '../ui/Panels.js';
+import { goldPop, countUpText, hitSpark, ringFlash, celebrateBurst, critSlowmo, flashPunch, levelUpText } from '../ui/Juice.js';
 
 const FONT_SERIF = 'Georgia, "Times New Roman", serif';
 const FONT_MONO = '"Courier New", Courier, monospace';
@@ -318,7 +319,11 @@ export default class DungeonScene extends Phaser.Scene {
       this.time.delayedCall(200, () => defenderEntry.sprite.clearTint());
 
       if (event.isCrit) {
-        this.cameras.main.shake(100, 0.006);
+        this.cameras.main.shake(160, 0.012);
+        ringFlash(this, dx, dy, 0xffee44, 70);
+        critSlowmo(this);
+      } else {
+        hitSpark(this, dx, dy - 10, 0xffaa44, 6, 40);
       }
     });
 
@@ -796,13 +801,20 @@ export default class DungeonScene extends Phaser.Scene {
         attackCooldown: 0,
         _wanderTarget: null,
         _wanderTimer: 0,
+        _lastPct: 1,
         updateHP() {
-          hpFill.clear();
           const stats = hero.getEffectiveStats();
           const pct = Math.max(0, hero.currentHp / stats.hp);
-          let c = 0x4caf50;
-          if (pct <= 0.3) c = 0xdd3333;
-          else if (pct <= 0.6) c = 0xddaa00;
+          if (pct < this._lastPct) {
+            // damage flash
+            const flash = scene.add.graphics().setDepth(103);
+            flash.fillStyle(0xffffff, 0.6);
+            flash.fillRoundedRect(sprite.x - 18, sprite.y - 22, 36, 6, 2);
+            scene.tweens.add({ targets: flash, alpha: 0, duration: 180, onComplete: () => flash.destroy() });
+          }
+          this._lastPct = pct;
+          hpFill.clear();
+          const c = pct <= 0.3 ? 0xdd3333 : pct <= 0.6 ? 0xddaa00 : 0x4caf50;
           hpFill.fillStyle(c, 0.85);
           const w = Math.max(2, Math.floor(34 * pct));
           hpFill.fillRoundedRect(sprite.x - 17, sprite.y - 21, w, 4, 1);
@@ -951,7 +963,11 @@ export default class DungeonScene extends Phaser.Scene {
                 this.time.delayedCall(250, () => defenderEntry.sprite.clearTint());
 
                 if (event.isCrit) {
-                  this.cameras.main.shake(120, 0.008);
+                  this.cameras.main.shake(160, 0.012);
+                  ringFlash(this, dx, dy, 0xffee44, 70);
+                  critSlowmo(this);
+                } else {
+                  hitSpark(this, dx, dy - 10, 0xffaa44, 6, 40);
                 }
               } else {
                 defenderEntry.sprite.setTint(0x44ff44);
@@ -1147,6 +1163,7 @@ export default class DungeonScene extends Phaser.Scene {
       this.combatSystem.startCombat(this.party, this.dungeonSystem.spawnRoomEnemies(room));
 
       this.cameras.main.fadeIn(400, 0, 0, 0);
+      flashPunch(this);
       this.time.delayedCall(500, () => {
         this.transitioning = false;
       });
@@ -1195,14 +1212,25 @@ export default class DungeonScene extends Phaser.Scene {
 
     const room = this.dungeonSystem.currentDungeon.rooms[this.currentRoomIndex];
 
+    let roomGold = 0;
     for (const es of this.enemySprites) {
       const idx = this.combatSystem.enemies.findIndex(e => e.id === es.enemy.id);
       if (idx !== -1) {
         const enemy = this.combatSystem.enemies[idx];
-        this.dungeonGoldEarned += Math.floor(
+        const g = Math.floor(
           (enemy.lootGold.min + Math.random() * (enemy.lootGold.max - enemy.lootGold.min))
         );
+        roomGold += g;
+        this.dungeonGoldEarned += g;
       }
+    }
+    if (roomGold > 0) {
+      const gx = this.hudGoldText.x + 30;
+      const gy = this.hudGoldText.y + 8;
+      goldPop(this, gx, gy, roomGold);
+      const prev = Math.max(0, this.dungeonGoldEarned - roomGold);
+      countUpText(this, this.hudGoldText, prev, this.dungeonGoldEarned, 500);
+      this.tweens.add({ targets: this.hudGoldText, scale: { from: 1.25, to: 1 }, duration: 260, ease: 'Back.easeOut' });
     }
 
     const loot = this.economy.rollLoot(room.type);
@@ -1241,7 +1269,9 @@ export default class DungeonScene extends Phaser.Scene {
     this.economy.addGold(this.dungeonGoldEarned);
 
     const xpGain = 20 + this.dungeonGoldEarned;
+    const preLevels = this.party.map(h => h.level);
     for (const hero of this.party) hero.gainXP(xpGain);
+    const leveledHeroes = this.party.filter((h, i) => h.level > preLevels[i]);
 
     const dungeonId = this.dungeonData.id;
     if (!this.gameState.dungeonsCompleted[dungeonId]) this.gameState.dungeonsCompleted[dungeonId] = 0;
@@ -1253,6 +1283,10 @@ export default class DungeonScene extends Phaser.Scene {
     overlay.fillStyle(0x000000, 0.75);
     overlay.fillRect(0, 0, 800, 600);
     overlay.setScrollFactor(0).setDepth(200);
+
+    // Victory celebration: gold burst + ring at the center
+    celebrateBurst(this, 400, 360, 0xddaa00);
+    this.cameras.main.flash(300, 40, 30, 10, false);
 
     const p = createPanel(this, 180, 100, 440, 380, 'Dungeon Complete');
     p.graphics.setDepth(201);
@@ -1303,6 +1337,11 @@ export default class DungeonScene extends Phaser.Scene {
         fontSize: '13px',
         color: hero.isAlive() ? '#88cc88' : '#cc6666'
       }).setDepth(202);
+
+      if (leveledHeroes.includes(hero)) {
+        ringFlash(this, 400, sy + 12, 0x66ff88, 60);
+        levelUpText(this, 400, sy - 2);
+      }
 
       sy += 28;
     }

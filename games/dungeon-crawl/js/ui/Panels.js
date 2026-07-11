@@ -136,6 +136,12 @@ export function createButton(scene, x, y, label, callback, widthOrOpts = 120, he
 
   zone.on('pointerup', () => {
     callback();
+    // brief click confirmation flash
+    draw(c.btnHover, c.btnHoverBdr, 0.9);
+    scene.tweens.add({ targets: [g, text], scaleX: 1, scaleY: 1, duration: 120, ease: 'Back.easeOut' });
+    scene.time.delayedCall(90, () => {
+      if (text.active) { draw(c.btnBg, c.btnBorder, 0.6); text.setColor(c.btnText); }
+    });
   });
 
   return {

@@ -1382,16 +1382,28 @@ export default class GuildScene extends Phaser.Scene {
   setupKeyboardShortcuts() {
     if (!this.input || !this.input.keyboard) return;
 
-    this.keyboardKeys = this.input.keyboard.addKeys('D,E,S,R,X');
+    this.keyboardKeys = this.input.keyboard.addKeys('D,E,S,R,X,G');
     this.keyboardKeys.X.on('down', () => this.handleKeyboardShortcuts('X'));
     this.keyboardKeys.D.on('down', () => this.handleKeyboardShortcuts('D'));
     this.keyboardKeys.E.on('down', () => this.handleKeyboardShortcuts('E'));
     this.keyboardKeys.S.on('down', () => this.handleKeyboardShortcuts('S'));
     this.keyboardKeys.R.on('down', () => this.handleKeyboardShortcuts('R'));
+    this.keyboardKeys.G.on('down', () => this.handleKeyboardShortcuts('G'));
+    this.input.keyboard.on('keydown-ESC', () => this.handleKeyboardShortcuts('ESC'));
   }
 
   handleKeyboardShortcuts(key) {
-    // Don't intercept if user is typing in an input
+    // Esc closes any open surface
+    if (key === 'ESC') {
+      if (this.dashboardOpen) return this.closeDashboard();
+      if (this.shopOpen) return this.closeShop();
+      if (this.expeditionPopupOpen) return this.closeExpeditionPopup();
+      if (this.gearPopupOpen) return this.closeGearPopup();
+      if (this.offlineRewardsOpen) return this.closeOfflineRewardsPopup();
+      if (this.expeditionResultsOpen) return this.closeExpeditionResultsPopup();
+      return;
+    }
+    // X closes the dashboard (legacy)
     if (this.dashboardOpen && key === 'X') {
       this.closeDashboard();
       return;
@@ -1399,7 +1411,8 @@ export default class GuildScene extends Phaser.Scene {
     if (this.dashboardOpen) return; // Block other shortcuts while dashboard open
 
     switch (key) {
-      case 'D': this.goToDungeon(); break;
+      case 'D': this.toggleDashboard(); break;
+      case 'G': this.goToDungeon(); break;
       case 'E': this.toggleExpeditions(); break;
       case 'S': this.toggleShop(); break;
       case 'R': this.recruitHero(); break;
