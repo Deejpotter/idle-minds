@@ -149,18 +149,3 @@ a:hover {
     gap: 12px;
   }
 }
-
-body::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background: repeating-linear-gradient(
-    0deg,
-    rgba(255, 255, 255, 0.02),
-    rgba(255, 255, 255, 0.02) 1px,
-    transparent 1px,
-    transparent 3px
-  );
-  pointer-events: none;
-  z-index: 9999;
-}

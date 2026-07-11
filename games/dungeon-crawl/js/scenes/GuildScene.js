@@ -1334,8 +1334,12 @@ export default class GuildScene extends Phaser.Scene {
   }
 
   renderDashboardContent() {
-    // Clear existing
-    for (const el of this.dashboardElements || []) el.destroy();
+    // Clear existing — disable input first so the input manager doesn't
+    // hold a stale hitArea reference when we destroy under the pointer.
+    for (const el of this.dashboardElements || []) {
+      if (el && typeof el.disableInteractive === 'function') el.disableInteractive();
+      if (el && typeof el.destroy === 'function') el.destroy();
+    }
     this.dashboardElements = [];
 
     const elements = renderDashboard(this, {
@@ -1354,7 +1358,10 @@ export default class GuildScene extends Phaser.Scene {
 
   closeDashboard() {
     this.dashboardOpen = false;
-    for (const el of this.dashboardElements || []) el.destroy();
+    for (const el of this.dashboardElements || []) {
+      if (el && typeof el.disableInteractive === 'function') el.disableInteractive();
+      if (el && typeof el.destroy === 'function') el.destroy();
+    }
     this.dashboardElements = [];
     if (this.dashboardRefreshTimer) {
       this.dashboardRefreshTimer.remove();
