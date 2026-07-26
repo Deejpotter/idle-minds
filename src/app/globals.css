@@ -7,6 +7,7 @@
   --accent: #ffaa44;
   --accent-2: #6688cc;
   --danger: #ff6644;
+  --success: #88cc88;
   --border: #2a2850;
 }
 
@@ -103,11 +104,98 @@ a:hover {
   display: block;
 }
 
-/* ---- Game shell (full-viewport Phaser host) ---- */
-.game-shell {
-  position: fixed;
-  inset: 0;
+/* ---- Game shell (Phaser host with header) ---- */
+.game-shell-with-header {
   display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: #08060f;
+}
+
+.game-shell-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+  border-bottom: 2px solid var(--border);
+  background: #0a0812;
+  flex-shrink: 0;
+}
+
+.game-shell-header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.game-shell-back {
+  font-size: 14px;
+}
+
+.game-shell-title {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.game-shell-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.game-shell-signin {
+  font-size: 16px;
+  color: var(--accent);
+}
+
+.save-status {
+  font-size: 14px;
+  color: var(--text-dim);
+}
+
+.save-status-cloud-saved {
+  color: var(--success, #88cc88);
+}
+
+.save-status-local-only {
+  color: var(--accent);
+}
+
+.save-status-error {
+  color: var(--danger);
+}
+
+.merge-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: #181830;
+  border-bottom: 1px solid var(--border);
+  font-size: 16px;
+}
+
+.merge-banner button {
+  font-family: 'VT323', monospace;
+  font-size: 16px;
+  padding: 4px 12px;
+  background: #24244a;
+  border: 1px solid var(--border);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.merge-banner button:hover {
+  border-color: var(--accent);
+}
+
+.game-shell {
+  flex: 1;
+  display: flex;
+  min-height: 0;
   background: #08060f;
 }
 

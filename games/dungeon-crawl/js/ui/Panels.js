@@ -1,33 +1,6 @@
-// ─── Design Tokens ───────────────────────────────────────────────
-const FONT_SERIF = 'Georgia, "Times New Roman", serif';
-const FONT_MONO = '"Courier New", Courier, monospace';
+import { FONT_SERIF, FONT_MONO, CLR } from './tokens.js';
 
-const CLR = {
-  // Backgrounds
-  panelBg:      0x0e0c18,
-  panelBgAlpha: 0.92,
-  panelBorder:  0x2a2850,
-  panelTitle:   0x8888bb,
-
-  // Buttons
-  btnBg:        0x181830,
-  btnBorder:    0x4444aa,
-  btnHover:     0x24244a,
-  btnHoverBdr:  0x6666cc,
-  btnDown:      0x0c0c1e,
-  btnText:      '#c0c0dd',
-  btnTextHover: '#e8e8ff',
-  btnTextDown:  '#9999bb',
-
-  // Stat bars
-  barBg:        0x1a1a2e,
-  barBorder:    0x333355,
-
-  // Text
-  textMuted:    '#666680',
-  textBody:     '#aaaacc',
-  textBright:   '#ddddee',
-};
+export { CLR, FONT_SERIF, FONT_MONO };
 
 // ─── Panel ───────────────────────────────────────────────────────
 export function createPanel(scene, x, y, w, h, title) {
@@ -238,4 +211,68 @@ export function createGoldDisplay(scene, x, y, amount) {
     },
     destroy() { text.destroy(); }
   };
+}
+
+/** Modal confirmation dialog. onConfirm/onCancel are optional callbacks. */
+export function createConfirmDialog(scene, {
+  title = 'Confirm',
+  message,
+  confirmLabel = 'Yes',
+  cancelLabel = 'Cancel',
+  onConfirm,
+  onCancel,
+  depth = 400,
+}) {
+  const els = [];
+  const { width, height } = scene.cameras.main;
+
+  const overlay = scene.add.graphics().setDepth(depth);
+  overlay.fillStyle(0x000000, 0.8);
+  overlay.fillRect(0, 0, width, height);
+  els.push(overlay);
+
+  const pw = 420;
+  const ph = 160;
+  const px = (width - pw) / 2;
+  const py = (height - ph) / 2;
+  const panel = createPanel(scene, px, py, pw, ph, title);
+  panel.graphics.setDepth(depth + 1);
+  if (panel.titleText) panel.titleText.setDepth(depth + 2);
+  els.push(panel.graphics, panel.titleText);
+
+  const msg = scene.add.text(px + pw / 2, py + 58, message, {
+    fontFamily: FONT_MONO,
+    fontSize: '14px',
+    color: CLR.textBody,
+    wordWrap: { width: pw - 24 },
+    align: 'center',
+  }).setOrigin(0.5).setDepth(depth + 2);
+  els.push(msg);
+
+  const close = (confirmed) => {
+    for (const el of els) el?.destroy?.();
+    btnCancel.destroy();
+    btnConfirm.destroy();
+    if (confirmed) onConfirm?.();
+    else onCancel?.();
+  };
+
+  const btnCancel = createButton(scene, px + pw / 2 - 110, py + ph - 40, cancelLabel, () => close(false), 100);
+  const btnConfirm = createButton(scene, px + pw / 2 + 10, py + ph - 40, confirmLabel, () => close(true), 100, 28, {
+    btnBg: CLR.btnDangerBg,
+    btnBorder: CLR.btnDangerBorder,
+    btnHover: 0x552424,
+    btnHoverBdr: 0xcc6666,
+    btnDown: 0x2a1010,
+    btnText: '#ffcccc',
+    btnTextHover: '#ffffff',
+    btnTextDown: '#cc9999',
+  });
+  btnCancel.graphics.setDepth(depth + 2);
+  btnCancel.text.setDepth(depth + 3);
+  btnConfirm.graphics.setDepth(depth + 2);
+  btnConfirm.text.setDepth(depth + 3);
+  els.push(btnCancel.graphics, btnCancel.text, btnConfirm.graphics, btnConfirm.text);
+
+  return { close: () => close(false) };
 }

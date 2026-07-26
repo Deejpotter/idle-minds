@@ -7,8 +7,16 @@ import { autoEquipBest } from '../systems/AutoEquipSystem.js';
 import { RARITIES } from '../data/gear.js';
 import { CLASSES, HERO_NAMES } from '../data/classes.js';
 import { PREDEFINED_EXPEDITIONS, EXPEDITION_TYPES, formatDuration } from '../data/expeditions.js';
-import { createPanel, createButton, createStatBar, createDivider, createGoldDisplay } from '../ui/Panels.js';
+import { createPanel, createButton, createStatBar, createDivider, createGoldDisplay, createConfirmDialog } from '../ui/Panels.js';
 import { openDashboard } from '../ui/Dashboard.js';
+import { showToast } from '../ui/Toast.js';
+import { GUILD_UPGRADES, canPurchaseUpgrade, purchaseUpgrade, getUpgradeLevel } from '../data/guildUpgrades.js';
+import { createGameContext, loadGameContext, serializeGameContext, applyStatContext } from '../systems/GameContext.js';
+import { PrestigeSystem, MAX_LEVEL, PRESTIGE_UPGRADES } from '../systems/PrestigeSystem.js';
+import { FORMATION_PRESETS } from '../systems/FormationSystem.js';
+import { getClassSkills, canUnlockSkill } from '../data/skillTrees.js';
+import { getAvailableSkillPoints, getPartySynergySummary } from '../systems/heroHelpers.js';
+import { rollExpansionGear } from '../data/gearExpansion.js';
 
 const FONT_SERIF = 'Georgia, "Times New Roman", serif';
 const FONT_MONO = '"Courier New", Courier, monospace';
@@ -37,9 +45,11 @@ export default class GuildScene extends Phaser.Scene {
     this.economy = new EconomySystem();
     this.expeditionSystem = new ExpeditionSystem();
     this.idleProgressSystem = new IdleProgressSystem();
+    this.gameContext = createGameContext();
 
     if (data && data.saveData) {
       this.loadFromSave(data.saveData);
+      loadGameContext(this.gameContext, data.saveData);
     } else {
       this.startNewGame();
     }
@@ -52,6 +62,9 @@ export default class GuildScene extends Phaser.Scene {
       ? this.restoreParty(data.saveData.party)
       : [this.selectedHero].filter(Boolean);
 
+    this.gameContext.formationSystem.autoAssignPositions(this.party.filter(Boolean));
+    applyStatContext(this.gameContext, this.party.filter(Boolean));
+
     this.uiElements = [];
     this.statBars = [];
     this.shopOpen = false;
@@ -61,6 +74,12 @@ export default class GuildScene extends Phaser.Scene {
     this.dashboardOpen = false;
     this.dashboardElements = [];
     this.dashboardRefreshTimer = null;
+    this.upgradesPopupOpen = false;
+    this.helpOverlayOpen = false;
+    this.skillsPopupOpen = false;
+    this.prestigePopupOpen = false;
+    this.tutorialStep = 0;
+    this.pendingPopupQueue = [];
 
     this.buildHeader();
     this.buildRosterPanel();
@@ -83,10 +102,11 @@ export default class GuildScene extends Phaser.Scene {
     // Keyboard shortcuts (D/E/S/R/X)
     this.setupKeyboardShortcuts();
 
-    // Show offline rewards popup if there were rewards
     if (this.offlineRewards && this.offlineRewards.goldEarned > 0) {
-      this.showOfflineRewardsPopup();
+      this.queuePopup(() => this.showOfflineRewardsPopup());
     }
+
+    this.maybeShowTutorial();
   }
 
   // ─── Header Bar ──────────────────────────────────────────────
@@ -111,6 +131,15 @@ export default class GuildScene extends Phaser.Scene {
     });
 
     this.goldDisplay = createGoldDisplay(this, width - 120, 10, this.economy.getGold());
+
+    const event = this.gameContext.eventSystem.getActiveEvent();
+    if (event) {
+      this.eventBannerText = this.add.text(12, 22, `Event: ${event.name}`, {
+        fontFamily: FONT_MONO,
+        fontSize: '11px',
+        color: event.color || '#ddaa00',
+      });
+    }
   }
 
   // ─── Roster Panel ────────────────────────────────────────────
@@ -132,12 +161,15 @@ export default class GuildScene extends Phaser.Scene {
     this.actionPanel = p;
 
     createButton(this, 484, 72, 'Dashboard', () => this.toggleDashboard(), 120);
-    createButton(this, 484, 108, 'Shop', () => this.toggleShop(), 120);
-    createButton(this, 484, 144, 'Dungeon', () => this.goToDungeon(), 120);
-    createButton(this, 484, 180, 'Expeditions', () => this.toggleExpeditions(), 120);
-    createButton(this, 484, 216, 'Recruit', () => this.recruitHero(), 120);
+    createButton(this, 484, 104, 'Shop', () => this.toggleShop(), 120);
+    createButton(this, 484, 136, 'Dungeon', () => this.goToDungeon(), 120);
+    createButton(this, 484, 168, 'Expeditions', () => this.toggleExpeditions(), 120);
+    createButton(this, 484, 200, 'Recruit', () => this.recruitHero(), 120);
+    createButton(this, 484, 232, 'Upgrades', () => this.toggleUpgrades(), 120);
+    createButton(this, 484, 264, 'Help', () => this.toggleHelpOverlay(), 120);
+    createButton(this, 484, 296, 'Prestige', () => this.togglePrestigeShop(), 120);
 
-    this.recruitCostText = this.add.text(484, 250, '', {
+    this.recruitCostText = this.add.text(484, 324, '', {
       fontFamily: FONT_MONO, fontSize: '12px', color: '#888888'
     });
 
@@ -147,7 +179,7 @@ export default class GuildScene extends Phaser.Scene {
       upgrades: this.gameState.guild.upgrades || {}
     };
     const rate = this.economy.calculatePassiveGoldPerMinute(guildState);
-    const rateText = this.add.text(484, 270, `\u25C6 ${rate.toFixed(1)}/min`, {
+    const rateText = this.add.text(484, 312, `\u25C6 ${rate.toFixed(1)}/min`, {
       fontFamily: FONT_MONO,
       fontSize: '11px',
       color: '#88aa55'
@@ -200,6 +232,12 @@ export default class GuildScene extends Phaser.Scene {
 
       this.partySlots.push({ graphics: slotG, text: slotText, index: i, x: sx });
     }
+
+    this.synergyText = this.add.text(16, 400, '', {
+      fontFamily: FONT_MONO,
+      fontSize: '11px',
+      color: '#6688aa',
+    });
   }
 
   // ─── Refresh ─────────────────────────────────────────────────
@@ -314,6 +352,19 @@ export default class GuildScene extends Phaser.Scene {
     autoEquipBtn.graphics.setDepth(1);
     autoEquipBtn.text.setDepth(2);
     this.detailElements.push(autoEquipBtn.graphics, autoEquipBtn.text);
+
+    const skillPts = getAvailableSkillPoints(hero);
+    const skillsBtn = createButton(this, dx + 10, dy + 22, `Skills (${skillPts})`, () => this.toggleSkills(), 100);
+    skillsBtn.graphics.setDepth(1);
+    skillsBtn.text.setDepth(2);
+    this.detailElements.push(skillsBtn.graphics, skillsBtn.text);
+
+    if (this.gameContext.prestigeSystem.canPrestige(hero)) {
+      const prestigeBtn = createButton(this, dx + 120, dy + 22, 'Prestige', () => this.handlePrestigeHero(hero), 70);
+      prestigeBtn.graphics.setDepth(1);
+      prestigeBtn.text.setDepth(2);
+      this.detailElements.push(prestigeBtn.graphics, prestigeBtn.text);
+    }
 
     // XP bar
     const xpPct = hero.xpToNext > 0 ? hero.xp / hero.xpToNext : 0;
@@ -448,6 +499,9 @@ export default class GuildScene extends Phaser.Scene {
         slot.graphics.strokeRoundedRect(slot.x, 374, 112, 22, 3);
       }
     }
+    if (this.synergyText) {
+      this.synergyText.setText(`Synergies: ${getPartySynergySummary(this.party)}`);
+    }
   }
 
   refreshGold() {
@@ -463,6 +517,8 @@ export default class GuildScene extends Phaser.Scene {
         this.party[index] = hero;
       }
     }
+    this.gameContext.formationSystem.autoAssignPositions(this.party.filter(Boolean));
+    applyStatContext(this.gameContext, this.party.filter(Boolean));
     this.refreshParty();
   }
 
@@ -653,7 +709,10 @@ export default class GuildScene extends Phaser.Scene {
   // ─── Hero Recruitment ────────────────────────────────────────
   recruitHero() {
     const cost = this.getRecruitCost();
-    if (this.economy.getGold() < cost) return;
+    if (this.economy.getGold() < cost) {
+      showToast(this, `Not enough gold — need ${cost}g`, 'error');
+      return;
+    }
 
     const classKeys = Object.keys(CLASSES);
     const randomClass = classKeys[Math.floor(Math.random() * classKeys.length)];
@@ -670,6 +729,7 @@ export default class GuildScene extends Phaser.Scene {
 
     this.refreshAll();
     this.updateRecruitCost();
+    showToast(this, `Recruited ${name} (${randomClass})`, 'success');
   }
 
   getRecruitCost() {
@@ -687,7 +747,10 @@ export default class GuildScene extends Phaser.Scene {
   // ─── Navigation ──────────────────────────────────────────────
   goToDungeon() {
     const validParty = this.party.filter(Boolean);
-    if (validParty.length === 0) return;
+    if (validParty.length === 0) {
+      showToast(this, 'Add at least one hero to your party', 'warning');
+      return;
+    }
 
     this.autoSave();
     this.cameras.main.fadeOut(400, 0, 0, 0);
@@ -698,7 +761,9 @@ export default class GuildScene extends Phaser.Scene {
           economy: this.economy,
           guild: this.gameState.guild,
           dungeonsCompleted: this.gameState.dungeonsCompleted,
-          stats: this.gameState.stats
+          stats: this.gameState.stats,
+          gameContext: this.gameContext,
+          persisted: this.buildPersistedState(),
         },
         party: validParty
       });
@@ -713,7 +778,7 @@ export default class GuildScene extends Phaser.Scene {
 
     this.gameState = {
       heroes: [hero],
-      guild: { level: 1, facilities: {} },
+      guild: { level: 1, upgrades: {}, facilities: {} },
       dungeonsCompleted: {},
       stats: { totalGoldEarned: 50, totalDungeons: 0, totalKills: 0 }
     };
@@ -722,15 +787,23 @@ export default class GuildScene extends Phaser.Scene {
   loadFromSave(saveData) {
     this.gameState = {
       heroes: saveData.heroes.map(h => Hero.deserialize(h)),
-      guild: saveData.guild || { level: 1, facilities: {} },
+      guild: saveData.guild || { level: 1, upgrades: {}, facilities: {} },
       dungeonsCompleted: saveData.dungeonsCompleted || {},
       stats: saveData.stats || { totalGoldEarned: 0, totalDungeons: 0, totalKills: 0 }
     };
+    if (!this.gameState.guild.upgrades) this.gameState.guild.upgrades = {};
     this.economy = EconomySystem.deserialize({
       gold: saveData.gold,
       inventory: saveData.inventory,
-      shopInventory: saveData.shopInventory
+      shopInventory: saveData.shopInventory,
+      materials: saveData.materials,
     });
+    if (saveData.expeditionSystem) {
+      this.expeditionSystem.load(saveData.expeditionSystem);
+    }
+    if (saveData.idleProgressSystem) {
+      this.idleProgressSystem.load(saveData.idleProgressSystem);
+    }
   }
 
   restoreParty(partyIds) {
@@ -738,7 +811,24 @@ export default class GuildScene extends Phaser.Scene {
   }
 
   getHeroSpriteKey(hero) {
-    return 'hero_paladin';
+    const map = {
+      paladin: 'hero_paladin',
+      warrior: 'hero_warrior',
+      mage: 'hero_mage',
+      priest: 'hero_priest',
+      rogue: 'hero_rogue',
+    };
+    return map[hero?.className] || 'hero_paladin';
+  }
+
+  buildPersistedState() {
+    return {
+      expeditionSystem: this.expeditionSystem.serialize(),
+      idleProgressSystem: this.idleProgressSystem.serialize(),
+      materials: this.economy.getMaterials(),
+      shopInventory: this.economy.shopInventory,
+      ...serializeGameContext(this.gameContext),
+    };
   }
 
   async autoSave() {
@@ -747,11 +837,14 @@ export default class GuildScene extends Phaser.Scene {
       heroes: this.gameState.heroes,
       guild: this.gameState.guild,
       inventory: this.economy.inventory,
+      shopInventory: this.economy.shopInventory,
+      materials: this.economy.getMaterials(),
       party: this.party,
       dungeonsCompleted: this.gameState.dungeonsCompleted,
       stats: this.gameState.stats,
       expeditionSystem: this.expeditionSystem.serialize(),
-      idleProgressSystem: this.idleProgressSystem.serialize()
+      idleProgressSystem: this.idleProgressSystem.serialize(),
+      ...serializeGameContext(this.gameContext),
     });
   }
 
@@ -881,6 +974,7 @@ export default class GuildScene extends Phaser.Scene {
     this.offlineRewardsEls = [];
     this.offlineRewards = null;
     this.refreshAll();
+    this.onPopupClosed();
   }
 
   // ─── Expedition System ───────────────────────────────────────
@@ -947,8 +1041,26 @@ export default class GuildScene extends Phaser.Scene {
     }
 
     // Show notification popup
-    this.showExpeditionResultsPopup(completedExpeditions);
+    this.queuePopup(() => this.showExpeditionResultsPopup(completedExpeditions));
     this.refreshAll();
+  }
+
+  queuePopup(fn) {
+    this.pendingPopupQueue.push(fn);
+    this.drainPopupQueue();
+  }
+
+  drainPopupQueue() {
+    if (this._popupShowing || this.pendingPopupQueue.length === 0) return;
+    if (this.offlineRewardsPopupOpen || this.expeditionResultsOpen || this.dashboardOpen) return;
+    this._popupShowing = true;
+    const fn = this.pendingPopupQueue.shift();
+    fn();
+  }
+
+  onPopupClosed() {
+    this._popupShowing = false;
+    this.time.delayedCall(300, () => this.drainPopupQueue());
   }
 
   showExpeditionResultsPopup(expeditions) {
@@ -1069,6 +1181,7 @@ export default class GuildScene extends Phaser.Scene {
     this.expeditionResultsPopupOpen = false;
     for (const el of this.expeditionResultsEls || []) el.destroy();
     this.expeditionResultsEls = [];
+    this.onPopupClosed();
   }
 
   toggleExpeditions() {
@@ -1285,7 +1398,7 @@ export default class GuildScene extends Phaser.Scene {
     const validParty = this.party.filter(Boolean);
 
     if (validParty.length < expeditionDef.minHeroes) {
-      // Show error - not enough heroes
+      showToast(this, `Need at least ${expeditionDef.minHeroes} heroes in party`, 'warning');
       return;
     }
 
@@ -1296,10 +1409,11 @@ export default class GuildScene extends Phaser.Scene {
     );
 
     if (!result.success) {
-      // Show error message
-      console.warn('Failed to start expedition:', result.error);
+      showToast(this, result.error || 'Could not start expedition', 'error');
       return;
     }
+
+    showToast(this, `Expedition started: ${expeditionDef.name}`, 'success');
 
     this.closeExpeditionPopup();
     this.openExpeditionPopup();
@@ -1377,6 +1491,318 @@ export default class GuildScene extends Phaser.Scene {
     this.refreshAll();
   }
 
+  // ─── Upgrades ────────────────────────────────────────────────
+
+  toggleUpgrades() {
+    if (this.upgradesPopupOpen) this.closeUpgradesPopup();
+    else this.openUpgradesPopup();
+  }
+
+  openUpgradesPopup() {
+    if (this.upgradesPopupOpen) return;
+    this.upgradesPopupOpen = true;
+    this.upgradesPopupEls = [];
+
+    const bg = this.add.graphics();
+    bg.fillStyle(0x000000, 0.75);
+    bg.fillRect(0, 0, 800, 600);
+    this.upgradesPopupEls.push(bg);
+
+    const p = createPanel(this, 80, 50, 640, 480, 'Guild Upgrades');
+    this.upgradesPopupEls.push(p.graphics, p.titleText);
+
+    const mats = this.economy.getMaterials();
+    const matSummary = Object.keys(mats).length
+      ? Object.entries(mats).map(([k, v]) => `${k}:${v}`).join('  ')
+      : 'No materials yet — run material expeditions';
+    const matText = this.add.text(p.x + 12, p.contentY, matSummary, {
+      fontFamily: FONT_MONO, fontSize: '12px', color: '#888899',
+    });
+    this.upgradesPopupEls.push(matText);
+
+    let sy = p.contentY + 24;
+    for (const def of GUILD_UPGRADES) {
+      const level = getUpgradeLevel(this.gameState.guild, def.id);
+      const check = canPurchaseUpgrade(this.gameState.guild, this.economy, def);
+
+      const nameText = this.add.text(p.x + 12, sy, `${def.name}  Lv.${level}/${def.maxLevel}`, {
+        fontFamily: FONT_SERIF, fontSize: '14px', color: '#ddddee', fontStyle: 'bold',
+      }).setDepth(201);
+      const descText = this.add.text(p.x + 12, sy + 18, def.description, {
+        fontFamily: FONT_MONO, fontSize: '11px', color: '#777799',
+      }).setDepth(201);
+      this.upgradesPopupEls.push(nameText, descText);
+
+      const costLabel = level >= def.maxLevel
+        ? 'MAX'
+        : `${def.goldCost(level)}g + ${Object.entries(def.materials(level)).map(([k, v]) => `${v} ${k}`).join(', ')}`;
+
+      const buyBtn = createButton(this, p.x + p.w - 130, sy + 4, level >= def.maxLevel ? 'Maxed' : 'Upgrade', () => {
+        const result = purchaseUpgrade(this.gameState.guild, this.economy, def);
+        if (!result.ok) {
+          showToast(this, result.reason, 'error');
+          return;
+        }
+        showToast(this, `${def.name} upgraded to Lv.${result.newLevel}`, 'success');
+        this.closeUpgradesPopup();
+        this.openUpgradesPopup();
+        this.refreshAll();
+      }, 110, 28);
+      buyBtn.graphics.setDepth(201);
+      buyBtn.text.setDepth(202);
+      this.upgradesPopupEls.push(buyBtn.graphics, buyBtn.text);
+
+      const costText = this.add.text(p.x + 280, sy + 10, costLabel, {
+        fontFamily: FONT_MONO, fontSize: '11px', color: check.ok ? '#88aa55' : '#664444',
+      }).setDepth(201);
+      this.upgradesPopupEls.push(costText);
+
+      sy += 56;
+    }
+
+    const closeBtn = createButton(this, p.x + p.w / 2 - 50, p.y + p.h - 32, 'Close', () => this.closeUpgradesPopup(), 100);
+    closeBtn.graphics.setDepth(201);
+    closeBtn.text.setDepth(202);
+    this.upgradesPopupEls.push(closeBtn.graphics, closeBtn.text);
+  }
+
+  closeUpgradesPopup() {
+    this.upgradesPopupOpen = false;
+    for (const el of this.upgradesPopupEls || []) el.destroy();
+    this.upgradesPopupEls = [];
+  }
+
+  // ─── Help & Tutorial ─────────────────────────────────────────
+
+  handlePrestigeHero(hero) {
+    const points = this.gameContext.prestigeSystem.prestigeHero(hero);
+    if (points > 0) {
+      showToast(this, `${hero.name} ascended! +${points} prestige points`, 'success');
+      this.refreshAll();
+      this.autoSave();
+    }
+  }
+
+  toggleSkills() {
+    if (this.skillsPopupOpen) this.closeSkillsPopup();
+    else this.openSkillsPopup();
+  }
+
+  openSkillsPopup() {
+    if (!this.selectedHero || this.skillsPopupOpen) return;
+    this.skillsPopupOpen = true;
+    this.skillsPopupEls = [];
+
+    const hero = this.selectedHero;
+    const tree = getClassSkills(hero.className);
+    if (!tree) {
+      showToast(this, 'No skill tree for this class', 'warning');
+      this.skillsPopupOpen = false;
+      return;
+    }
+
+    const bg = this.add.graphics();
+    bg.fillStyle(0x000000, 0.75);
+    bg.fillRect(0, 0, 800, 600);
+    this.skillsPopupEls.push(bg);
+
+    const p = createPanel(this, 60, 40, 680, 520, `${hero.name} — Skills`);
+    this.skillsPopupEls.push(p.graphics, p.titleText);
+
+    const ptsText = this.add.text(p.x + 12, p.contentY, `Available points: ${getAvailableSkillPoints(hero)}`, {
+      fontFamily: FONT_MONO, fontSize: '12px', color: '#88aa55',
+    });
+    this.skillsPopupEls.push(ptsText);
+
+    let sy = p.contentY + 22;
+    for (const branchKey of Object.keys(tree.branches)) {
+      const branch = tree.branches[branchKey];
+      const branchLabel = this.add.text(p.x + 12, sy, branch.name, {
+        fontFamily: FONT_SERIF, fontSize: '13px', color: '#aaaacc', fontStyle: 'bold',
+      });
+      this.skillsPopupEls.push(branchLabel);
+      sy += 18;
+
+      branch.skills.forEach((skill, idx) => {
+        const unlocked = hero.unlockedSkills.includes(skill.id);
+        const canUnlock = !unlocked && canUnlockSkill(tree, branchKey, idx, hero.unlockedSkills)
+          && getAvailableSkillPoints(hero) >= skill.cost;
+
+        const label = `${unlocked ? '✓' : '○'} ${skill.name} (${skill.cost}pt)`;
+        const btn = createButton(this, p.x + 24, sy, label.substring(0, 22), () => {
+          if (unlocked || !canUnlock) return;
+          hero.unlockedSkills.push(skill.id);
+          showToast(this, `Unlocked ${skill.name}`, 'success');
+          this.closeSkillsPopup();
+          this.openSkillsPopup();
+          this.refreshDetail();
+        }, 200, 24);
+        btn.graphics.setDepth(201);
+        btn.text.setDepth(202);
+        if (!canUnlock && !unlocked) btn.text.setAlpha(0.5);
+        this.skillsPopupEls.push(btn.graphics, btn.text);
+        sy += 28;
+      });
+      sy += 8;
+    }
+
+    const closeBtn = createButton(this, p.x + p.w / 2 - 50, p.y + p.h - 32, 'Close', () => this.closeSkillsPopup(), 100);
+    closeBtn.graphics.setDepth(201);
+    closeBtn.text.setDepth(202);
+    this.skillsPopupEls.push(closeBtn.graphics, closeBtn.text);
+  }
+
+  closeSkillsPopup() {
+    this.skillsPopupOpen = false;
+    for (const el of this.skillsPopupEls || []) el.destroy();
+    this.skillsPopupEls = [];
+  }
+
+  togglePrestigeShop() {
+    if (this.prestigePopupOpen) this.closePrestigePopup();
+    else this.openPrestigePopup();
+  }
+
+  openPrestigePopup() {
+    if (this.prestigePopupOpen) return;
+    this.prestigePopupOpen = true;
+    this.prestigePopupEls = [];
+    const ps = this.gameContext.prestigeSystem;
+
+    const bg = this.add.graphics();
+    bg.fillStyle(0x000000, 0.75);
+    bg.fillRect(0, 0, 800, 600);
+    this.prestigePopupEls.push(bg);
+
+    const p = createPanel(this, 80, 50, 640, 480, 'Prestige Upgrades');
+    this.prestigePopupEls.push(p.graphics, p.titleText);
+
+    const pts = this.add.text(p.x + 12, p.contentY, `Prestige points: ${ps.globalPrestigePoints}`, {
+      fontFamily: FONT_MONO, fontSize: '13px', color: '#ddaa00',
+    });
+    this.prestigePopupEls.push(pts);
+
+    let sy = p.contentY + 24;
+    for (const upgrade of Object.values(PRESTIGE_UPGRADES)) {
+      const rank = ps.getUpgradeRank(upgrade.id);
+      const nameText = this.add.text(p.x + 12, sy, `${upgrade.name} (${rank}/${upgrade.maxRank})`, {
+        fontFamily: FONT_SERIF, fontSize: '13px', color: '#ddddee',
+      });
+      this.prestigePopupEls.push(nameText);
+
+      const buyBtn = createButton(this, p.x + p.w - 120, sy - 2, rank >= upgrade.maxRank ? 'Max' : 'Buy', () => {
+        if (!ps.purchaseUpgrade(upgrade.id)) {
+          showToast(this, 'Not enough prestige points', 'error');
+          return;
+        }
+        showToast(this, `${upgrade.name} upgraded`, 'success');
+        this.closePrestigePopup();
+        this.openPrestigePopup();
+      }, 90, 24);
+      buyBtn.graphics.setDepth(201);
+      buyBtn.text.setDepth(202);
+      this.prestigePopupEls.push(buyBtn.graphics, buyBtn.text);
+      sy += 32;
+    }
+
+    const closeBtn = createButton(this, p.x + p.w / 2 - 50, p.y + p.h - 32, 'Close', () => this.closePrestigePopup(), 100);
+    closeBtn.graphics.setDepth(201);
+    closeBtn.text.setDepth(202);
+    this.prestigePopupEls.push(closeBtn.graphics, closeBtn.text);
+  }
+
+  closePrestigePopup() {
+    this.prestigePopupOpen = false;
+    for (const el of this.prestigePopupEls || []) el.destroy();
+    this.prestigePopupEls = [];
+  }
+
+  async toggleSettings() {
+    const exported = await this.saveSystem.exportSave();
+    createConfirmDialog(this, {
+      title: 'Save Data',
+      message: exported
+        ? 'Copy this code to backup your save, or paste a code to import.\n\nExport code is in browser console (F12).'
+        : 'No save data to export.',
+      confirmLabel: 'Export to Console',
+      cancelLabel: 'Close',
+      onConfirm: () => {
+        if (exported) {
+          console.log('IDLE MINDS SAVE EXPORT:', exported);
+          showToast(this, 'Save exported to browser console (F12)', 'success');
+        }
+      },
+    });
+  }
+
+  toggleHelpOverlay() {
+    if (this.helpOverlayOpen) this.closeHelpOverlay();
+    else this.openHelpOverlay();
+  }
+
+  openHelpOverlay() {
+    if (this.helpOverlayOpen) return;
+    this.helpOverlayOpen = true;
+    this.helpOverlayEls = [];
+
+    const bg = this.add.graphics().setDepth(300);
+    bg.fillStyle(0x000000, 0.85);
+    bg.fillRect(0, 0, 800, 600);
+    this.helpOverlayEls.push(bg);
+
+    const p = createPanel(this, 100, 60, 600, 420, 'Help');
+    p.graphics.setDepth(301);
+    if (p.titleText) p.titleText.setDepth(302);
+    this.helpOverlayEls.push(p.graphics, p.titleText);
+
+    const lines = [
+      'KEYBOARD SHORTCUTS',
+      'D — Dashboard    G — Dungeon    E — Expeditions',
+      'S — Shop         R — Recruit    ? — Help    Esc — Close',
+      '',
+      'PARTY',
+      'Select a hero in the roster, then click a party slot.',
+      'Click a filled slot to remove that hero.',
+      '',
+      'UPGRADES',
+      'Earn materials from expeditions. Spend gold + materials',
+      'on guild upgrades for passive gold bonuses.',
+      '',
+      'Sign in on the website to sync saves to the cloud.',
+    ];
+
+    const txt = this.add.text(p.x + 16, p.contentY, lines.join('\n'), {
+      fontFamily: FONT_MONO, fontSize: '13px', color: '#aaaacc', lineSpacing: 6,
+    }).setDepth(302);
+    this.helpOverlayEls.push(txt);
+
+    const closeBtn = createButton(this, p.x + p.w / 2 - 50, p.y + p.h - 36, 'Close', () => this.closeHelpOverlay(), 100);
+    closeBtn.graphics.setDepth(302);
+    closeBtn.text.setDepth(303);
+    this.helpOverlayEls.push(closeBtn.graphics, closeBtn.text);
+  }
+
+  closeHelpOverlay() {
+    this.helpOverlayOpen = false;
+    for (const el of this.helpOverlayEls || []) el.destroy();
+    this.helpOverlayEls = [];
+  }
+
+  maybeShowTutorial() {
+    if (localStorage.getItem('idle_minds_tutorial_done')) return;
+    this.time.delayedCall(800, () => {
+      if (!this.scene.isActive()) return;
+      createConfirmDialog(this, {
+        title: 'Welcome',
+        message: 'Build your party, recruit heroes, and conquer dungeons!\n\nTip: Select a hero, click a party slot, then press G for Dungeon.',
+        confirmLabel: 'Got it',
+        cancelLabel: 'Skip',
+        onConfirm: () => localStorage.setItem('idle_minds_tutorial_done', '1'),
+        onCancel: () => localStorage.setItem('idle_minds_tutorial_done', '1'),
+      });
+    });
+  }
+
   // ─── Keyboard Shortcuts (Phase 4D) ─────────────────────────
 
   setupKeyboardShortcuts() {
@@ -1390,17 +1816,21 @@ export default class GuildScene extends Phaser.Scene {
     this.keyboardKeys.R.on('down', () => this.handleKeyboardShortcuts('R'));
     this.keyboardKeys.G.on('down', () => this.handleKeyboardShortcuts('G'));
     this.input.keyboard.on('keydown-ESC', () => this.handleKeyboardShortcuts('ESC'));
+    this.input.keyboard.on('keydown-QUESTION', () => this.toggleHelpOverlay());
   }
 
   handleKeyboardShortcuts(key) {
-    // Esc closes any open surface
     if (key === 'ESC') {
+      if (this.skillsPopupOpen) return this.closeSkillsPopup();
+      if (this.prestigePopupOpen) return this.closePrestigePopup();
+      if (this.helpOverlayOpen) return this.closeHelpOverlay();
+      if (this.upgradesPopupOpen) return this.closeUpgradesPopup();
       if (this.dashboardOpen) return this.closeDashboard();
       if (this.shopOpen) return this.closeShop();
       if (this.expeditionPopupOpen) return this.closeExpeditionPopup();
       if (this.gearPopupOpen) return this.closeGearPopup();
-      if (this.offlineRewardsOpen) return this.closeOfflineRewardsPopup();
-      if (this.expeditionResultsOpen) return this.closeExpeditionResultsPopup();
+      if (this.offlineRewardsPopupOpen) return this.closeOfflineRewardsPopup();
+      if (this.expeditionResultsPopupOpen) return this.closeExpeditionResultsPopup();
       return;
     }
     // X closes the dashboard (legacy)

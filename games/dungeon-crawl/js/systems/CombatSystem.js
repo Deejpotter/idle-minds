@@ -10,11 +10,13 @@ export class CombatSystem {
     this.onDungeonComplete = null;
     this.onLootDrop = null;
     this._threatTable = new Map();
+    this.formationSystem = null;
   }
 
-  startCombat(party, enemies) {
+  startCombat(party, enemies, options = {}) {
     this.party = party;
     this.enemies = enemies;
+    this.formationSystem = options.formationSystem || null;
     this.combatLog = [];
     this.tickCount = 0;
     this._threatTable = new Map();
@@ -115,7 +117,8 @@ export class CombatSystem {
     for (const ability of hero.abilities) {
       if (ability.id === 'basic_attack') continue;
       if (ability.currentCooldown > 0) continue;
-      if (hero.currentMp < ability.manaCost) continue;
+      const manaCost = hero.getManaCost ? hero.getManaCost(ability.manaCost) : ability.manaCost;
+      if (hero.currentMp < manaCost) continue;
       selectedAbility = ability;
       break;
     }
@@ -125,7 +128,8 @@ export class CombatSystem {
     }
 
     if (selectedAbility.manaCost > 0) {
-      hero.useMana(selectedAbility.manaCost);
+      const manaCost = hero.getManaCost ? hero.getManaCost(selectedAbility.manaCost) : selectedAbility.manaCost;
+      hero.useMana(manaCost);
     }
 
     const targets = this._selectTarget(hero, selectedAbility, 'hero');
@@ -319,9 +323,52 @@ export class CombatSystem {
     const critBonus = isCrit ? attackerStats.critMultiplier : 1.0;
     const rawDamage = baseDamage * critBonus;
     const variance = 0.8 + Math.random() * 0.4;
-    const damage = Math.max(1, Math.floor(rawDamage * variance - defenderStats.defense * 0.5));
+    let damage = Math.max(1, Math.floor(rawDamage * variance - defenderStats.defense * 0.5));
+
+    if (attacker.getGearUniqueEffects) {
+      for (const effect of attacker.getGearUniqueEffects()) {
+        if (effect.id === 'fire_damage') {
+          damage += Math.floor((attackerStats.magic || 0) * (effect.multiplier || 0.5));
+        }
+      }
+    }
 
     return { damage, isCrit };
+  }
+
+  _resolveDefender(attacker, defender) {
+    if (!this.formationSystem || !defender?.id?.startsWith('hero_')) return defender;
+    if (!attacker?.id || attacker.id.startsWith('hero_')) return defender;
+
+    const pos = this.formationSystem.getHeroPosition(defender.id);
+    if (pos !== 'back') return defender;
+
+    const frontRow = this.formationSystem.getHeroesInPosition(this.party, 'front').filter(h => h.isAlive());
+    if (frontRow.length > 0 && Math.random() < 0.5) {
+      return frontRow[Math.floor(Math.random() * frontRow.length)];
+    }
+    return defender;
+  }
+
+  _applyDamageReflection(defender, attacker, damage, events) {
+    if (!defender.getGearUniqueEffects) return;
+    for (const effect of defender.getGearUniqueEffects()) {
+      if (effect.id === 'damage_reflection' && attacker?.takeDamage) {
+        const reflect = Math.floor(damage * (effect.reflectPercent || 0));
+        if (reflect > 0) {
+          attacker.takeDamage(reflect);
+          events.push({
+            type: 'damage',
+            source: defender.name,
+            target: attacker.name,
+            amount: reflect,
+            ability: 'Reflection',
+            isCrit: false,
+            message: `${defender.name} reflects ${reflect} damage`,
+          });
+        }
+      }
+    }
   }
 
   _executeAction(attacker, defender, ability) {
@@ -423,21 +470,23 @@ export class CombatSystem {
         }
       }
     } else {
-      const { damage, isCrit } = this._calculateDamage(attacker, defender, ability);
-      defender.takeDamage(damage);
+      let actualDefender = this._resolveDefender(attacker, defender);
+      const { damage, isCrit } = this._calculateDamage(attacker, actualDefender, ability);
+      actualDefender.takeDamage(damage);
+      this._applyDamageReflection(actualDefender, attacker, damage, events);
 
       events.push({
         type: 'damage',
         source: attackerName,
-        target: defender.name,
+        target: actualDefender.name,
         amount: damage,
         ability: ability.name,
         isCrit: isCrit,
-        message: `${attackerName} uses ${ability.name} on ${defender.name} for ${damage}${isCrit ? ' (CRIT!)' : ''} damage`
+        message: `${attackerName} uses ${ability.name} on ${actualDefender.name} for ${damage}${isCrit ? ' (CRIT!)' : ''} damage`
       });
 
       if (attacker.id && attacker.id.startsWith('hero_')) {
-        this._addThreat(attacker.id, defender.id, damage);
+        this._addThreat(attacker.id, actualDefender.id, damage);
       }
     }
 

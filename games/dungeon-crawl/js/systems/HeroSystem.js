@@ -1,4 +1,7 @@
 import { CLASSES } from '../data/classes.js';
+import { applySkillEffects } from '../data/skillTrees.js';
+import { calculateActiveSynergies, applySynergyBonuses } from '../data/synergies.js';
+import { getStatContext } from './StatContext.js';
 
 let nextId = 0;
 
@@ -28,6 +31,9 @@ export class Hero {
     }
 
     this.gear = { weapon: null, armor: null, accessory: null };
+    this.unlockedSkills = [];
+    this.bonusSkillPoints = 0;
+    this.prestige = { times: 0, pointsEarned: 0 };
 
     this.abilities = classDef.abilities.map(ability => ({ ...ability }));
 
@@ -35,22 +41,40 @@ export class Hero {
     this.currentMp = this.baseStats.mp;
   }
 
+  calculateBaseStats() {
+    const classDef = CLASSES[this.className];
+    const stats = {};
+    for (const stat of Object.keys(classDef.baseStats)) {
+      stats[stat] = classDef.baseStats[stat] + classDef.growthPerLevel[stat] * (this.level - 1);
+    }
+    return stats;
+  }
+
   getEffectiveStats() {
-    const stats = { ...this.baseStats };
-    const gearSlots = Object.keys(this.gear);
-    for (const slot of gearSlots) {
-      const item = this.gear[slot];
-      if (item && item.statBonus) {
-        const bonusStats = Object.keys(item.statBonus);
-        for (const stat of bonusStats) {
-          if (stats[stat] !== undefined) {
-            stats[stat] += item.statBonus[stat];
-          } else {
-            stats[stat] = item.statBonus[stat];
-          }
+    let stats = { ...this.baseStats };
+
+    for (const item of Object.values(this.gear)) {
+      if (item?.statBonus) {
+        for (const [stat, val] of Object.entries(item.statBonus)) {
+          stats[stat] = (stats[stat] ?? 0) + val;
         }
       }
     }
+
+    stats = applySkillEffects(stats, this.unlockedSkills || [], this.className);
+
+    const ctx = getStatContext();
+    if (ctx?.prestigeSystem) {
+      stats = ctx.prestigeSystem.applyPrestigeBonuses(stats, this);
+    }
+    if (ctx?.formationSystem) {
+      stats = ctx.formationSystem.getPositionModifiers(this, stats);
+    }
+    if (ctx?.party?.length) {
+      const synergies = calculateActiveSynergies(ctx.party.map(h => h.className));
+      stats = applySynergyBonuses(stats, synergies);
+    }
+
     return stats;
   }
 
@@ -70,8 +94,7 @@ export class Hero {
     this.level++;
     const classDef = CLASSES[this.className];
     const growth = classDef.growthPerLevel;
-    const stats = Object.keys(growth);
-    for (const stat of stats) {
+    for (const stat of Object.keys(growth)) {
       this.baseStats[stat] += growth[stat];
     }
     this.xpToNext = this.getXpToNext();
@@ -88,6 +111,24 @@ export class Hero {
         }
       }
     }
+  }
+
+  getManaCost(baseCost) {
+    let cost = baseCost;
+    for (const item of Object.values(this.gear)) {
+      if (item?.uniqueEffect?.id === 'mana_efficiency') {
+        cost = Math.floor(cost * 0.7);
+      }
+    }
+    return cost;
+  }
+
+  getGearUniqueEffects() {
+    const effects = [];
+    for (const item of Object.values(this.gear)) {
+      if (item?.uniqueEffect) effects.push(item.uniqueEffect);
+    }
+    return effects;
   }
 
   equip(slot, gearItem) {
@@ -215,6 +256,9 @@ export class Hero {
       xpToNext: this.xpToNext,
       baseStats: { ...this.baseStats },
       gear: { ...this.gear },
+      unlockedSkills: [...(this.unlockedSkills || [])],
+      bonusSkillPoints: this.bonusSkillPoints || 0,
+      prestige: { ...(this.prestige || { times: 0, pointsEarned: 0 }) },
       abilities: this.abilities.map(a => ({ ...a })),
       currentHp: this.currentHp,
       currentMp: this.currentMp
@@ -229,6 +273,9 @@ export class Hero {
     hero.xpToNext = data.xpToNext;
     hero.baseStats = { ...data.baseStats };
     hero.gear = { ...data.gear };
+    hero.unlockedSkills = [...(data.unlockedSkills || [])];
+    hero.bonusSkillPoints = data.bonusSkillPoints || 0;
+    hero.prestige = data.prestige ? { ...data.prestige } : { times: 0, pointsEarned: 0 };
     hero.abilities = data.abilities.map(a => ({ ...a }));
     hero.currentHp = data.currentHp;
     hero.currentMp = data.currentMp;

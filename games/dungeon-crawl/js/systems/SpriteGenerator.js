@@ -579,7 +579,16 @@ const RARITY_COLORS = {
 };
 
 export function generateAllSprites(scene) {
-  drawMultiFrame(scene, 'hero_paladin', 16, 16, [paladinIdle1, paladinIdle2, paladinAtk1, paladinAtk2]);
+  const heroFrames = [paladinIdle1, paladinIdle2, paladinAtk1, paladinAtk2];
+  drawMultiFrame(scene, 'hero_paladin', 16, 16, heroFrames);
+
+  const recolor = (frame, from, to) => frame.map(row => row.map(c => c === from ? to : c));
+  const recolorFrames = (frames, from, to) => frames.map(f => recolor(f, from, to));
+
+  drawMultiFrame(scene, 'hero_warrior', 16, 16, recolorFrames(heroFrames, GD, SV));
+  drawMultiFrame(scene, 'hero_mage', 16, 16, recolorFrames(heroFrames, GD, BL));
+  drawMultiFrame(scene, 'hero_priest', 16, 16, recolorFrames(heroFrames, GD, GN));
+  drawMultiFrame(scene, 'hero_rogue', 16, 16, recolorFrames(heroFrames, GD, PG));
 
   const goblinFrames = [createGoblin('#33aa33', '#228822', '#ffff00')];
   drawMultiFrame(scene, 'enemy_goblin', 16, 16, [...goblinFrames, ...goblinFrames]);
@@ -608,6 +617,15 @@ export function generateAllSprites(scene) {
 
   const lichFrames = [createBoss(PG, PG, '#00ff00')];
   drawMultiFrame(scene, 'enemy_lich_lord', 16, 16, [...lichFrames, ...lichFrames]);
+
+  const fireImpFrames = [createGoblin('#ff6622', '#cc4400', '#ffaa00')];
+  drawMultiFrame(scene, 'enemy_fire_imp', 16, 16, [...fireImpFrames, ...fireImpFrames]);
+  const flameFrames = [createGoblin('#ff4400', '#aa2200', '#ffcc00')];
+  drawMultiFrame(scene, 'enemy_flame_elemental', 16, 16, [...flameFrames, ...flameFrames]);
+  const frostFrames = [createGoblin('#88ccff', '#4488cc', '#ccffff')];
+  drawMultiFrame(scene, 'enemy_frost_wraith', 16, 16, [...frostFrames, ...frostFrames]);
+  const dreamFrames = [createGoblin('#aa88ff', '#6644aa', '#ddccff')];
+  drawMultiFrame(scene, 'enemy_dream_phantom', 16, 16, [...dreamFrames, ...dreamFrames]);
 
   drawPixels(scene, 'tile_floor', 16, 16, createFloorTile());
   drawPixels(scene, 'tile_wall', 16, 16, createWallTile());

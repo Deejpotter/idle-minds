@@ -46,10 +46,11 @@ export class EconomySystem {
     return this.gold;
   }
 
-  rollLoot(roomType) {
+  rollLoot(roomType, lootBonus = 0) {
     const table = LOOT_TABLES[roomType];
     if (!table) return null;
-    if (Math.random() > table.dropChance) return null;
+    const effectiveChance = Math.min(1, table.dropChance + lootBonus);
+    if (Math.random() > effectiveChance) return null;
 
     let rarity = table.minRarity;
     if (roomType === 'final_boss' && Math.random() < (table.epicChance || 0)) {

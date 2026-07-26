@@ -25,6 +25,11 @@ function copyGames() {
     if (fs.existsSync(indexHtml)) {
       fs.copyFileSync(indexHtml, path.join(target, 'index.html'));
     }
+
+    const manifest = path.join(gameSrc, 'manifest.json');
+    if (fs.existsSync(manifest)) {
+      fs.copyFileSync(manifest, path.join(target, 'manifest.json'));
+    }
   }
 }
 

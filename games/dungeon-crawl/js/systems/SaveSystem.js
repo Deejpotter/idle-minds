@@ -4,6 +4,32 @@ const SAVE_KEY = 'idle_minds_save';
 const SAVE_VERSION = 2;
 const DEFAULT_SLOT = 'slot1';
 
+function dispatchSaveStatus(status, detail) {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('idle-minds-save-status', { detail: { status, ...detail } }));
+  }
+}
+
+function buildSavePayload(state) {
+  return {
+    version: SAVE_VERSION,
+    timestamp: Date.now(),
+    gold: state.gold || 0,
+    heroes: (state.heroes || []).map(h => h.serialize()),
+    guild: state.guild || { level: 1, upgrades: {}, facilities: {} },
+    inventory: state.inventory || [],
+    shopInventory: state.shopInventory || [],
+    materials: state.materials || {},
+    party: (state.party || []).filter(Boolean).map(h => h.id),
+    dungeonsCompleted: state.dungeonsCompleted || {},
+    expeditionSystem: state.expeditionSystem || null,
+    idleProgressSystem: state.idleProgressSystem || null,
+    prestigeSystem: state.prestigeSystem || null,
+    formationSystem: state.formationSystem || null,
+    stats: state.stats || { totalGoldEarned: 0, totalDungeons: 0, totalKills: 0 },
+  };
+}
+
 export class SaveSystem {
   constructor() {
     this.lastSaveState = null;
@@ -17,40 +43,31 @@ export class SaveSystem {
   }
 
   async save(state) {
-    const saveData = {
-      version: SAVE_VERSION,
-      timestamp: Date.now(),
-      gold: state.gold || 0,
-      heroes: (state.heroes || []).map(h => h.serialize()),
-      guild: state.guild || { level: 1, upgrades: {}, facilities: {} },
-      inventory: state.inventory || [],
-      party: (state.party || []).filter(Boolean).map(h => h.id),
-      dungeonsCompleted: state.dungeonsCompleted || {},
-      expeditionSystem: state.expeditionSystem || null,
-      idleProgressSystem: state.idleProgressSystem || null,
-      prestigeSystem: state.prestigeSystem || null,
-      formationSystem: state.formationSystem || null,
-      stats: state.stats || { totalGoldEarned: 0, totalDungeons: 0, totalKills: 0 }
-    };
+    const saveData = buildSavePayload(state);
 
     try {
       const serialized = JSON.stringify(saveData);
       this.lastSaveState = serialized;
+      dispatchSaveStatus('saving');
 
       const userId = window.__IDLE_MINDS_USER_ID__;
       if (userId) {
         const result = await cloudSave(this.slot, saveData);
         if (result.success) {
-          return true;
+          dispatchSaveStatus('cloud-saved');
+          return { success: true, cloud: true };
         }
-        console.warn('Cloud save failed, falling back to localStorage');
+        dispatchSaveStatus('local-only', { error: result.error });
+      } else {
+        dispatchSaveStatus('local-only');
       }
 
       localStorage.setItem(SAVE_KEY, serialized);
-      return true;
+      return { success: true, cloud: false };
     } catch (e) {
       console.error('Save failed:', e);
-      return false;
+      dispatchSaveStatus('error', { error: String(e) });
+      return { success: false, cloud: false };
     }
   }
 
@@ -100,6 +117,10 @@ export class SaveSystem {
     return localStorage.getItem(SAVE_KEY) !== null;
   }
 
+  async hasLocalSave() {
+    return localStorage.getItem(SAVE_KEY) !== null;
+  }
+
   async deleteSave() {
     const userId = window.__IDLE_MINDS_USER_ID__;
     
@@ -115,19 +136,7 @@ export class SaveSystem {
     const now = Date.now();
     if (now - this.lastSaveTime < this.autoSaveInterval) return false;
 
-    const serialized = JSON.stringify({
-      gold: state.gold || 0,
-      heroes: (state.heroes || []).map(h => h.serialize()),
-      guild: state.guild || { level: 1, upgrades: {}, facilities: {} },
-      inventory: state.inventory || [],
-      party: (state.party || []).filter(Boolean).map(h => h.id),
-      dungeonsCompleted: state.dungeonsCompleted || {},
-      expeditionSystem: state.expeditionSystem || null,
-      idleProgressSystem: state.idleProgressSystem || null,
-      prestigeSystem: state.prestigeSystem || null,
-      formationSystem: state.formationSystem || null,
-      stats: state.stats || { totalGoldEarned: 0, totalDungeons: 0, totalKills: 0 }
-    });
+    const serialized = JSON.stringify(buildSavePayload(state));
 
     if (serialized === this.lastSaveState) return false;
 
@@ -139,19 +148,25 @@ export class SaveSystem {
     try {
       this.lastSaveState = serialized;
       const data = JSON.parse(serialized);
+      dispatchSaveStatus('saving');
 
       const userId = window.__IDLE_MINDS_USER_ID__;
       if (userId) {
         const result = await cloudSave(this.slot, data);
         if (result.success) {
+          dispatchSaveStatus('cloud-saved');
           return true;
         }
+        dispatchSaveStatus('local-only', { error: result.error });
+      } else {
+        dispatchSaveStatus('local-only');
       }
 
       localStorage.setItem(SAVE_KEY, serialized);
       return true;
     } catch (e) {
       console.error('Save failed:', e);
+      dispatchSaveStatus('error', { error: String(e) });
       return false;
     }
   }
@@ -179,13 +194,17 @@ export class SaveSystem {
       heroes: [],
       guild: { level: 1, upgrades: {}, facilities: {} },
       inventory: [],
+      shopInventory: [],
+      materials: {},
       party: [],
       dungeonsCompleted: {},
       expeditionSystem: null,
       idleProgressSystem: null,
       prestigeSystem: null,
       formationSystem: null,
-      stats: { totalGoldEarned: 0, totalDungeons: 0, totalKills: 0 }
+      stats: { totalGoldEarned: 0, totalDungeons: 0, totalKills: 0 },
     };
   }
 }
+
+export { SAVE_KEY, SAVE_VERSION };

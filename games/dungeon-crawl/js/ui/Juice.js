@@ -147,3 +147,32 @@ export function levelUpText(scene, x, y) {
     onComplete: () => txt.destroy()
   });
 }
+
+/** Floating combat damage/heal number */
+export function damageFloat(scene, x, y, amount, type = 'damage') {
+  const colors = {
+    damage: '#ff6644',
+    crit: '#ffee44',
+    heal: '#88cc88',
+    miss: '#888899',
+  };
+  const label = type === 'miss' ? 'MISS' : (type === 'heal' ? `+${amount}` : String(amount));
+  const txt = scene.add.text(x, y, label, {
+    fontFamily: FONT_MONO,
+    fontSize: type === 'crit' ? '18px' : '14px',
+    color: colors[type] || colors.damage,
+    fontStyle: 'bold',
+    stroke: '#000000',
+    strokeThickness: 2,
+  }).setOrigin(0.5).setDepth(120);
+
+  scene.tweens.add({
+    targets: txt,
+    y: y - 32,
+    x: x + Phaser.Math.Between(-12, 12),
+    alpha: 0,
+    duration: 900,
+    ease: 'Power2',
+    onComplete: () => txt.destroy(),
+  });
+}

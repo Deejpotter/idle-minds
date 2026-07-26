@@ -5,6 +5,8 @@ import { EconomySystem } from '../systems/EconomySystem.js';
 import { RARITIES } from '../data/gear.js';
 import { createPanel, createButton } from '../ui/Panels.js';
 import { goldPop, countUpText, hitSpark, ringFlash, celebrateBurst, critSlowmo, flashPunch, levelUpText } from '../ui/Juice.js';
+import { applyStatContext, EXPANSION_DUNGEON_IDS } from '../systems/GameContext.js';
+import { rollExpansionGear } from '../data/gearExpansion.js';
 
 const FONT_SERIF = 'Georgia, "Times New Roman", serif';
 const FONT_MONO = '"Courier New", Courier, monospace';
@@ -26,6 +28,8 @@ export default class DungeonScene extends Phaser.Scene {
     this.gameState = data.gameState;
     this.party = data.party;
     this.dungeonData = data.dungeonData;
+    this.persisted = this.gameState.persisted || null;
+    applyStatContext(this.gameState.gameContext || null, this.party);
 
     this.dungeonSystem = new DungeonSystem();
     this.saveSystem = new SaveSystem();
@@ -845,6 +849,10 @@ export default class DungeonScene extends Phaser.Scene {
       else if (enemy.type === 'goblin_king') texKey = 'enemy_goblin_king';
       else if (enemy.type === 'bone_commander') texKey = 'enemy_bone_commander';
       else if (enemy.type === 'lich_lord') texKey = 'enemy_lich_lord';
+      else if (enemy.type === 'fire_imp') texKey = 'enemy_fire_imp';
+      else if (enemy.type === 'flame_elemental') texKey = 'enemy_flame_elemental';
+      else if (enemy.type === 'frost_wraith') texKey = 'enemy_frost_wraith';
+      else if (enemy.type === 'dream_phantom') texKey = 'enemy_dream_phantom';
 
       const sprite = this.add.image(sx, sy, texKey, 0)
         .setOrigin(0.5)
@@ -1133,6 +1141,18 @@ export default class DungeonScene extends Phaser.Scene {
 
       bar.hpText.setText(`${Math.floor(hero.currentHp)}/${stats.hp}`);
       bar.nameText.setColor(hero.isAlive() ? '#aaaacc' : '#664444');
+
+      if (!bar.cdOverlay) {
+        bar.cdOverlay = this.add.graphics().setScrollFactor(0).setDepth(103);
+      }
+      bar.cdOverlay.clear();
+      const activeCd = hero.abilities.find(a => a.currentCooldown > 0 && a.id !== 'basic_attack');
+      if (activeCd) {
+        bar.cdOverlay.fillStyle(0x000000, 0.55);
+        bar.cdOverlay.fillRoundedRect(bar.bx, bar.by + 22, 110, 10, 2);
+        bar.cdOverlay.lineStyle(1, 0xffaa44, 0.8);
+        bar.cdOverlay.strokeRoundedRect(bar.bx, bar.by + 22, 110, 10, 2);
+      }
     }
   }
 
@@ -1161,7 +1181,18 @@ export default class DungeonScene extends Phaser.Scene {
       this.dungeonSystem.spawnRoomEnemies(room); // populate roomEnemies BEFORE spawning sprites
       this.spawnEnemies(room);
 
-      this.combatSystem.startCombat(this.party, this.dungeonSystem.roomEnemies);
+      const eventSys = this.gameState.gameContext?.eventSystem;
+      const hpMult = eventSys?.getEnemyHpMultiplier?.() || 1;
+      if (hpMult !== 1) {
+        for (const e of this.dungeonSystem.roomEnemies) {
+          e.maxHp = Math.floor(e.maxHp * hpMult);
+          e.currentHp = e.maxHp;
+        }
+      }
+
+      this.combatSystem.startCombat(this.party, this.dungeonSystem.roomEnemies, {
+        formationSystem: this.gameState.gameContext?.formationSystem || null,
+      });
 
       this.cameras.main.fadeIn(400, 0, 0, 0);
       flashPunch(this);
@@ -1222,10 +1253,16 @@ export default class DungeonScene extends Phaser.Scene {
           (enemy.lootGold.min + Math.random() * (enemy.lootGold.max - enemy.lootGold.min))
         );
         roomGold += g;
-        this.dungeonGoldEarned += g;
       }
     }
+
+    const ctx = this.gameState.gameContext;
+    const goldMult = (ctx?.prestigeSystem?.getGoldMultiplier?.() || 1)
+      * (ctx?.eventSystem?.getGoldMultiplier?.() || 1);
+    roomGold = Math.floor(roomGold * goldMult);
+
     if (roomGold > 0) {
+      this.dungeonGoldEarned += roomGold;
       const gx = this.hudGoldText.x + 30;
       const gy = this.hudGoldText.y + 8;
       goldPop(this, gx, gy, roomGold);
@@ -1234,7 +1271,18 @@ export default class DungeonScene extends Phaser.Scene {
       this.tweens.add({ targets: this.hudGoldText, scale: { from: 1.25, to: 1 }, duration: 260, ease: 'Back.easeOut' });
     }
 
-    const loot = this.economy.rollLoot(room.type);
+    const lootBonus = ctx?.eventSystem?.getLootChanceBonus?.() || 0;
+    let loot = this.economy.rollLoot(room.type, lootBonus);
+    const dungeonId = this.dungeonData?.id || '';
+    if (!loot && room.type === 'final_boss' && EXPANSION_DUNGEON_IDS.includes(dungeonId)) {
+      const expItem = rollExpansionGear(
+        this.dungeonData.minLevel || 1,
+        this.dungeonData.maxLevel || 99
+      );
+      if (expItem) {
+        loot = { ...expItem, id: `${expItem.id}_${Date.now()}` };
+      }
+    }
     if (loot) {
       this.economy.addToInventory(loot);
       this.addCombatLogMessage({ type: 'heal', message: `Loot: ${loot.name}!`, amount: 0 });
@@ -1269,7 +1317,10 @@ export default class DungeonScene extends Phaser.Scene {
     this.dungeonGoldEarned += baseReward;
     this.economy.addGold(this.dungeonGoldEarned);
 
-    const xpGain = 20 + this.dungeonGoldEarned;
+    const ctx = this.gameState.gameContext;
+    const xpMult = (ctx?.prestigeSystem?.getXPMultiplier?.() || 1)
+      * (ctx?.eventSystem?.getXPMultiplier?.() || 1);
+    const xpGain = Math.floor((20 + this.dungeonGoldEarned) * xpMult);
     const preLevels = this.party.map(h => h.level);
     for (const hero of this.party) hero.gainXP(xpGain);
     const leveledHeroes = this.party.filter((h, i) => h.level > preLevels[i]);
@@ -1422,10 +1473,10 @@ export default class DungeonScene extends Phaser.Scene {
   getHeroSpriteKey(className) {
     const map = {
       paladin: 'hero_paladin',
-      warrior: 'hero_paladin',
-      mage: 'hero_paladin',
-      priest: 'hero_paladin',
-      rogue: 'hero_paladin'
+      warrior: 'hero_warrior',
+      mage: 'hero_mage',
+      priest: 'hero_priest',
+      rogue: 'hero_rogue',
     };
     return map[className] || 'hero_paladin';
   }
@@ -1444,15 +1495,21 @@ export default class DungeonScene extends Phaser.Scene {
 
   buildSaveData() {
     return {
-      version: 1,
+      version: 2,
       timestamp: Date.now(),
       gold: this.economy.getGold(),
       heroes: this.gameState.heroes.map(h => h.serialize()),
       guild: this.gameState.guild,
       inventory: this.economy.inventory,
+      shopInventory: this.persisted?.shopInventory ?? this.economy.shopInventory,
+      materials: this.persisted?.materials ?? this.economy.getMaterials?.() ?? {},
       party: this.party.map(h => h.id),
       dungeonsCompleted: this.gameState.dungeonsCompleted,
-      stats: this.gameState.stats
+      stats: this.gameState.stats,
+      expeditionSystem: this.persisted?.expeditionSystem ?? null,
+      idleProgressSystem: this.persisted?.idleProgressSystem ?? null,
+      prestigeSystem: this.persisted?.prestigeSystem ?? null,
+      formationSystem: this.persisted?.formationSystem ?? null,
     };
   }
 

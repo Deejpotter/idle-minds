@@ -1,4 +1,5 @@
 import { SaveSystem } from '../systems/SaveSystem.js';
+import { createConfirmDialog } from '../ui/Panels.js';
 
 export default class TitleScene extends Phaser.Scene {
   constructor() {
@@ -251,11 +252,19 @@ export default class TitleScene extends Phaser.Scene {
           this.scene.start('GuildScene', { saveData });
         });
       }});
-      buttons.push({ label: 'NEW GAME', y: btnY + 48, action: async () => {
-        await saveSystem.deleteSave();
-        this.cameras.main.fadeOut(600, 0, 0, 0);
-        this.time.delayedCall(600, () => {
-          this.scene.start('GuildScene', { saveData: null });
+      buttons.push({ label: 'NEW GAME', y: btnY + 48, action: () => {
+        createConfirmDialog(this, {
+          title: 'New Game',
+          message: 'This will permanently delete your current save. Continue?',
+          confirmLabel: 'Delete & Start',
+          cancelLabel: 'Cancel',
+          onConfirm: async () => {
+            await saveSystem.deleteSave();
+            this.cameras.main.fadeOut(600, 0, 0, 0);
+            this.time.delayedCall(600, () => {
+              this.scene.start('GuildScene', { saveData: null });
+            });
+          },
         });
       }});
     } else {
@@ -360,7 +369,7 @@ export default class TitleScene extends Phaser.Scene {
 
   buildFooter(w, h) {
     // Version / credit text
-    const footer = this.add.text(w / 2, h - 20, 'v0.1  -  An Idle Adventure', {
+    const footer = this.add.text(w / 2, h - 20, 'v1.0.0  -  An Idle Adventure', {
       fontFamily: 'Georgia, "Times New Roman", serif',
       fontSize: '10px',
       color: '#444455'

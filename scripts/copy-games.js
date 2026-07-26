@@ -30,6 +30,11 @@ for (const dir of fs.readdirSync(src, { withFileTypes: true })) {
   if (fs.existsSync(indexHtml)) {
     fs.copyFileSync(indexHtml, path.join(target, 'index.html'));
   }
+
+  const manifest = path.join(gameSrc, 'manifest.json');
+  if (fs.existsSync(manifest)) {
+    fs.copyFileSync(manifest, path.join(target, 'manifest.json'));
+  }
 }
 
 console.log('Game files copied to public/games/');
