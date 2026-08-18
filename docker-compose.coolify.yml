@@ -1,3 +1,38 @@
-# Coolify uses docker-compose.yaml by default. This file is kept for older configs.
-include:
-  - docker-compose.yaml
+# Coolify's compose parser does not resolve the `include:` directive, so this
+# file must stay a full inline copy of docker-compose.yaml rather than
+# `include:`-ing it (Coolify would otherwise deploy zero services).
+services:
+  idle-minds:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
+      ADMIN_CLERK_USER_ID: ${ADMIN_CLERK_USER_ID:-}
+      SAVE_DIR: /data/saves
+      NEXT_PUBLIC_CLERK_SIGN_IN_URL: /sign-in
+      NEXT_PUBLIC_CLERK_SIGN_UP_URL: /sign-up
+    expose:
+      - "3000"
+    volumes:
+      - saves:/data
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  saves:
